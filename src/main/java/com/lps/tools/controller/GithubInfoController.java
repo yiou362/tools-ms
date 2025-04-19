@@ -1,6 +1,7 @@
 package com.lps.tools.controller;
 
 import com.lps.tools.model.AnalysisResult;
+import com.lps.tools.model.ProjectOverviewResult;
 import com.lps.tools.service.GithubService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
@@ -16,6 +17,15 @@ public class GithubInfoController {
     @Autowired
     private GithubService githubService;
 
+    /**
+     * 获取API文档相关代码（controller、entity）
+     * @param owner
+     * @param repo
+     * @param branch
+     * @param token
+     * @param githubApiVersion
+     * @return
+     */
     @GetMapping("/github/analyze-controllers")
     public List<AnalysisResult> analyzeControllers(
             @RequestParam String owner,
@@ -26,6 +36,31 @@ public class GithubInfoController {
         HttpHeaders headers = new HttpHeaders();
         try {
             return githubService.analyzeControllers(owner, repo, branch, headers, token, githubApiVersion);
+        } catch (Exception e) {
+            e.printStackTrace();
+            return null;
+        }
+    }
+
+    /**
+     * 获取项目概览相关代码（controller、pom.xml、application.yml、Application.java、logback-spring.xml）
+     * @param owner
+     * @param repo
+     * @param branch
+     * @param token
+     * @param githubApiVersion
+     * @return
+     */
+    @GetMapping("/github/project-overview")
+    public ProjectOverviewResult projectOverview(
+            @RequestParam String owner,
+            @RequestParam String repo,
+            @RequestParam String branch,
+            @RequestParam String token,
+            @RequestParam String githubApiVersion) {
+        HttpHeaders headers = new HttpHeaders();
+        try {
+            return githubService.analyzeProjectOverview(owner, repo, branch, headers, token, githubApiVersion);
         } catch (Exception e) {
             e.printStackTrace();
             return null;

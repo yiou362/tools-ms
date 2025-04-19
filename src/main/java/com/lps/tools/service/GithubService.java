@@ -7,6 +7,8 @@ import com.github.javaparser.ast.CompilationUnit;
 import com.github.javaparser.ast.body.MethodDeclaration;
 import com.github.javaparser.ast.body.Parameter;
 import com.github.javaparser.ast.type.Type;
+import com.lps.tools.model.ProjectOverviewResult;
+import com.lps.tools.model.RelevantFiles;
 import com.lps.tools.util.HttpUtil;
 import com.lps.tools.model.AnalysisResult;
 import com.lps.tools.model.GitHubTreeItem;
@@ -25,7 +27,6 @@ import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
-import java.util.regex.Pattern;
 
 @Service
 public class GithubService {
@@ -33,41 +34,108 @@ public class GithubService {
     @Autowired
     private RestTemplate restTemplate;
 
-    private static final Pattern WHITESPACE = Pattern.compile("\\s+");
     private static final Set<String> PRIMITIVE_TYPES = Set.of(
-            "string", "int", "long", "double", "boolean", "list", "map", "void", "Object", "Integer"
-    );
-    private static final Set<String> EXTERNAL_PACKAGES = Set.of(
-            "org.", "com.fasterxml.", "java.", "javax.", "com.google.", "io."
+            "string", "int", "long", "double", "boolean", "list", "map", "void", "object", "integer"
     );
     private static final Map<String, String> FILE_CACHE = new HashMap<>();
-    private String lastAnalysisFilePath;
+//    private String lastAnalysisFilePath;
 
     public List<AnalysisResult> analyzeControllers(String owner, String repo, String branch, HttpHeaders headers, String token, String githubApiVersion) throws IOException, URISyntaxException {
-        String sha = getDefaultBranchSha(owner, repo, branch, headers);
-        List<GitHubTreeItem> tree = getRepoTree(sha, token, owner, repo,githubApiVersion);
-        Map<String, Object> relevantFiles = findRelevantFiles(tree);
+        try {
+            // 获取默认分支的 SHA 值
+            String sha = getDefaultBranchSha(owner, repo, branch, headers);
 
-        List<String> controllerFiles = (List<String>) relevantFiles.get("controllers");
-        // TODO 提取前十个元素用于测试，以免调用github次数太多
-        controllerFiles = new ArrayList<>(
-                controllerFiles.subList(0, Math.min(10, controllerFiles.size()))
-        );
+            // 获取仓库的树结构
+            List<GitHubTreeItem> tree = getRepoTree(sha, token, owner, repo, githubApiVersion);
 
-        List<AnalysisResult> results = new ArrayList<>();
-        for (String path : controllerFiles) {
-            String content = getFileContent(path, owner, repo, branch, token,githubApiVersion);
-            if (content != null) {
-                AnalysisResult result = parseController(content, path, relevantFiles, owner, repo, branch, token, githubApiVersion);
-                results.add(new AnalysisResult(result.getContent(), result.getParams(), result.getReturns()));
+            // 查找相关文件
+            RelevantFiles relevantFiles = findRelevantFiles(tree);
+
+            // 获取控制器文件列表
+            List<String> controllerFiles = relevantFiles.getControllers();
+            if (controllerFiles == null || controllerFiles.isEmpty()) {
+                return Collections.emptyList(); // 如果没有控制器文件，直接返回空列表
+            }
+
+            // 提取前十个元素用于测试（可配置）
+            int maxFilesToProcess = Math.min(10, controllerFiles.size());
+            List<String> limitedControllerFiles = new ArrayList<>(controllerFiles.subList(0, maxFilesToProcess));
+
+            // 分析每个控制器文件
+            List<AnalysisResult> results = new ArrayList<>();
+            for (String path : limitedControllerFiles) {
+                try {
+                    // 获取文件内容
+                    String content = getFileContent(path, owner, repo, branch, token, githubApiVersion);
+                    if (content != null) {
+                        // 解析控制器内容
+                        AnalysisResult result = parseController(content, relevantFiles, owner, repo, branch, token, githubApiVersion);
+                        results.add(new AnalysisResult(result.getContent(), result.getParams(), result.getReturns()));
+                    }
+                } catch (Exception e) {
+                    // 捕获单个文件处理中的异常，避免中断整个流程
+                    logger.error("Error processing file: {}. Error: {}" ,path, e.getMessage());
+                }
+            }
+
+            return results;
+        } catch (Exception e) {
+            // 捕获主流程中的异常，避免方法完全失败
+            logger.error("Error during analysis: {}" , e.getMessage());
+            throw e; // 重新抛出异常，确保调用方可以感知到错误
+        }
+    }
+
+
+    public ProjectOverviewResult analyzeProjectOverview(String owner, String repo, String branch, HttpHeaders headers, String token, String githubApiVersion) throws IOException {
+        try {
+            // 获取默认分支的 SHA
+            String sha = getDefaultBranchSha(owner, repo, branch, headers);
+
+            // 获取仓库树结构
+            List<GitHubTreeItem> tree = getRepoTree(sha, token, owner, repo, githubApiVersion);
+
+            // 查找相关文件
+            RelevantFiles relevantFiles = findProjectOverviewFiles(tree);
+
+            // 初始化结果对象
+            ProjectOverviewResult results = new ProjectOverviewResult();
+
+            // 处理 controllers 和 profiles 文件内容
+            results.setControllers(getFileContents(relevantFiles.getControllers(), owner, repo, branch, token, githubApiVersion));
+            results.setProfiles(getFileContents(relevantFiles.getProfiles(), owner, repo, branch, token, githubApiVersion));
+
+            return results;
+        } catch (Exception e) {
+            // 记录异常日志并抛出自定义异常（可根据需求调整）
+            logger.info("Error occurred while analyzing project overview: {}" , e.getMessage());
+            throw new IOException("Failed to analyze project overview", e);
+        }
+    }
+
+    // 提取通用方法处理文件内容获取逻辑
+    private List<String> getFileContents(List<String> paths, String owner, String repo, String branch, String token, String githubApiVersion){
+        List<String> contents = new ArrayList<>();
+        if (paths == null || paths.isEmpty()) {
+            return contents; // 如果路径列表为空，直接返回空列表
+        }
+        for (String path : paths) {
+            try {
+                String content = getFileContent(path, owner, repo, branch, token, githubApiVersion);
+                contents.add(content);
+            } catch (Exception e) {
+                // 单个文件获取失败时记录日志并继续处理其他文件
+                logger.info("Failed to retrieve content for file: {}. Error: {}" , path, e.getMessage());
             }
         }
-        return results;
+        return contents;
     }
 
-    public String getLastAnalysisFilePath() {
-        return lastAnalysisFilePath;
-    }
+
+
+//    public String getLastAnalysisFilePath() {
+//        return lastAnalysisFilePath;
+//    }
 
     public String getDefaultBranchSha(String owner, String repo, String branch, HttpHeaders headers) throws URISyntaxException {
         String url = String.format("https://api.github.com/repos/%s/%s/branches/%s", owner, repo, branch);
@@ -97,29 +165,110 @@ public class GithubService {
                     item.get("type").asText()
             ));
         }
+
         return tree;
     }
 
-    private Map<String, Object> findRelevantFiles(List<GitHubTreeItem> tree) {
+    private RelevantFiles findRelevantFiles(List<GitHubTreeItem> tree) {
         List<String> controllers = new ArrayList<>();
         Map<String, String> dataClasses = new HashMap<>();
+
         for (GitHubTreeItem item : tree) {
-            if ("blob".equals(item.getType()) && item.getPath().endsWith(".java")) {
+            if ("blob".equals(item.getType()) && item.getPath() != null && item.getPath().endsWith(".java")) {
                 String pathLower = item.getPath().toLowerCase();
-                if (pathLower.contains("controller")) {
+
+                // 判断是否为 Controller
+                if (isControllerPath(pathLower)) {
                     controllers.add(item.getPath());
-                    logger.info("找到 Controller: {}", item.getPath());
-                } else if (pathLower.contains("/entity/") || pathLower.contains("/model/") ||
-                        pathLower.contains("/dto/") || pathLower.contains("/bo/") || pathLower.contains("/po/")) {
-                    String className = item.getPath().substring(item.getPath().lastIndexOf('/') + 1).replace(".java", "");
-                    dataClasses.put(className, item.getPath());
-                    logger.info("找到数据类: {}, 路径: {}", className, item.getPath());
+                    if (logger.isDebugEnabled()) { // 仅在调试模式下记录日志
+                        logger.debug("找到 Controller: {}", item.getPath());
+                    }
+                }
+                // 判断是否为数据类
+                else if (isDataClassPath(pathLower)) {
+                    try {
+                        String className = extractClassName(item.getPath());
+                        dataClasses.put(className, item.getPath());
+                        if (logger.isDebugEnabled()) { // 仅在调试模式下记录日志
+                            logger.debug("找到数据类: {}, 路径: {}", className, item.getPath());
+                        }
+                    } catch (IllegalArgumentException e) {
+                        logger.warn("无法解析文件路径: {}, 错误信息: {}", item.getPath(), e.getMessage());
+                    }
                 }
             }
         }
-        Map<String, Object> result = new HashMap<>();
-        result.put("controllers", controllers);
-        result.put("dataClasses", dataClasses);
+
+        RelevantFiles result = new RelevantFiles();
+        result.setControllers(controllers);
+        result.setDataClasses(dataClasses);
+        return result;
+    }
+
+    // 辅助方法：判断路径是否为 Controller
+    private boolean isControllerPath(String pathLower) {
+        return pathLower.contains("/controller/") || pathLower.endsWith("controller.java");
+    }
+
+    // 辅助方法：判断路径是否为数据类
+    private boolean isDataClassPath(String pathLower) {
+        return pathLower.contains("/entity/") || pathLower.contains("/model/") ||
+                pathLower.contains("/dto/") || pathLower.contains("/bo/") || pathLower.contains("/po/");
+    }
+
+    // 辅助方法：从路径中提取类名
+    private String extractClassName(String path) {
+        if (path == null || !path.contains("/")) {
+            throw new IllegalArgumentException("无效的路径格式");
+        }
+        int lastSlashIndex = path.lastIndexOf('/');
+        if (lastSlashIndex < 0 || lastSlashIndex + 1 >= path.length()) {
+            throw new IllegalArgumentException("路径中缺少有效的类名");
+        }
+        return path.substring(lastSlashIndex + 1).replace(".java", "");
+    }
+
+
+    private RelevantFiles findProjectOverviewFiles(List<GitHubTreeItem> tree) {
+        // 配置文件列表：pom.xml、application.yml、Application.java、logback-spring.xml
+        final Set<String> profileFileNames = new HashSet<>(Arrays.asList(
+                "pom.xml", "application", "logback-spring.xml"
+        ));
+
+        List<String> profiles = new ArrayList<>();
+        List<String> controllers = new ArrayList<>();
+
+        if (tree == null || tree.isEmpty()) {
+            logger.warn("GitHubTreeItem 列表为空或未提供");
+            return new RelevantFiles(); // 返回空结果
+        }
+
+        for (GitHubTreeItem item : tree) {
+            if ("blob".equals(item.getType()) && item.getPath() != null) {
+                String fileName = item.getPath().toLowerCase();
+
+                // 精确匹配控制器文件
+                if (fileName.contains("/controller/") || fileName.endsWith("controller.java")) {
+                    controllers.add(item.getPath());
+                } else if (profileFileNames.stream().anyMatch(fileName::contains)) {
+                    // 精确匹配配置文件
+                    profiles.add(item.getPath());
+                }
+            }
+        }
+
+        RelevantFiles result = new RelevantFiles();
+        result.setProfiles(profiles);
+        result.setControllers(controllers);
+
+        // 集中输出日志
+        if (!profiles.isEmpty()) {
+            logger.info("找到 profiles: {}", profiles);
+        }
+        if (!controllers.isEmpty()) {
+            logger.info("找到 Controllers: {}", controllers);
+        }
+
         return result;
     }
 
@@ -142,7 +291,7 @@ public class GithubService {
         return decoded;
     }
 
-    public AnalysisResult parseController(String content, String controllerPath, Map<String, Object> relevantFiles, String owner, String repo, String branch, String token,String githubApiVersion) {
+    public AnalysisResult parseController(String content, RelevantFiles relevantFiles, String owner, String repo, String branch, String token, String githubApiVersion) {
         try {
             CompilationUnit cu = StaticJavaParser.parse(content);
             Set<String> paramClasses = new HashSet<>();
@@ -162,7 +311,7 @@ public class GithubService {
                 // 出参
                 Type returnType = method.getType();
                 String returnTypeName = returnType.asString();
-                if (!returnTypeName.equals("void") && !isPrimitiveType(returnTypeName)) {
+                if (!"void".equals(returnTypeName) && !isPrimitiveType(returnTypeName)) {
                     returnClasses.add(returnTypeName);
                 }
             }
@@ -177,7 +326,7 @@ public class GithubService {
 //            });
 
             // 获取 dataClasses
-            Map<String, String> dataClasses = (Map<String, String>) relevantFiles.get("dataClasses");
+            Map<String, String> dataClasses = relevantFiles.getDataClasses();
 
             // 获取入参源代码
             List<String> params = new ArrayList<>();
@@ -191,7 +340,7 @@ public class GithubService {
                 // 查找 dataClasses（精确或模糊匹配）
                 String path = findMatchingClass(className, dataClasses);
                 if (path != null) {
-                    String code = getFileContent(path, owner, repo, branch, token,githubApiVersion);
+                    String code = getFileContent(path, owner, repo, branch, token, githubApiVersion);
                     if (code != null) {
                         params.add(cleanCode(code));
                         logger.info("找到入参类: {}, 路径: {}", className, path);
@@ -214,7 +363,7 @@ public class GithubService {
                 // 查找 dataClasses
                 String path = findMatchingClass(className, dataClasses);
                 if (path != null) {
-                    String code = getFileContent(path, owner, repo, branch, token,githubApiVersion);
+                    String code = getFileContent(path, owner, repo, branch, token, githubApiVersion);
                     if (code != null) {
                         returns.add(cleanCode(code));
                         logger.info("找到出参类: {}, 路径: {}", className, path);
@@ -266,9 +415,9 @@ public class GithubService {
     }
 
     private String cleanCode(String code) {
-//        if (code == null) return "";
-//        return WHITESPACE.matcher(code).replaceAll("");
-        if (code == null) {return "";}
+        if (code == null) {
+            return "";
+        }
         // 移除换行和制表符
         String cleaned = code.replaceAll("\\n|\\r|\\t", "");
         // 压缩多个空格为一个

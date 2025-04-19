@@ -37,6 +37,15 @@
             <artifactId>javaparser-core</artifactId>
             <version>3.25.4</version>
         </dependency>
+
+        <!-- 添加 Lombok 依赖 -->
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <version>1.18.28</version> <!-- 使用最新版本 -->
+            <scope>provided</scope>
+        </dependency>
+
     </dependencies>
 
 
