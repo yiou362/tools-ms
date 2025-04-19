@@ -3,6 +3,7 @@ package com.lps.tools.model;
 import lombok.Data;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * @author hhuang26
@@ -10,5 +11,6 @@ import java.util.List;
 @Data
 public class ProjectOverviewResult {
     private List<String> controllers;
-    private List<String> profiles;
+    private List<GitHubFileItem> profiles;
+
 }

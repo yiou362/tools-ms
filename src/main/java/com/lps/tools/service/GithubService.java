@@ -100,7 +100,7 @@ public class GithubService {
 
             // 处理 controllers 和 profiles 文件内容
             results.setControllers(getFileContents(relevantFiles.getControllers(), gitHubRequestInfo));
-            results.setProfiles(getFileContents(relevantFiles.getProfiles(), gitHubRequestInfo));
+            results.setProfiles(getFilePathAndContents(relevantFiles.getProfiles(), gitHubRequestInfo));
 
             return results;
         } catch (Exception e) {
@@ -120,6 +120,25 @@ public class GithubService {
             try {
                 String content = getFileContent(path, gitHubRequestInfo);
                 contents.add(cleanCode(content));
+            } catch (Exception e) {
+                // 单个文件获取失败时记录日志并继续处理其他文件
+                logger.info("Failed to retrieve content for file: {}. Error: {}" , path, e.getMessage());
+            }
+        }
+        return contents;
+    }
+
+    // 提取通用方法处理文件内容和文件路径获取逻辑
+    private List<GitHubFileItem> getFilePathAndContents(List<String> paths, GitHubRequestInfo gitHubRequestInfo){
+        List<GitHubFileItem> contents = new ArrayList<>();
+        if (paths == null || paths.isEmpty()) {
+            // 如果路径列表为空，直接返回空列表
+            return contents;
+        }
+        for (String path : paths) {
+            try {
+                String content = getFileContent(path, gitHubRequestInfo);
+                contents.add(new GitHubFileItem(path,cleanCode(content)));
             } catch (Exception e) {
                 // 单个文件获取失败时记录日志并继续处理其他文件
                 logger.info("Failed to retrieve content for file: {}. Error: {}" , path, e.getMessage());
@@ -330,7 +349,7 @@ public class GithubService {
             for (String className : paramClasses) {
                 // 跳过原始类型
                 if (isPrimitiveType(className)) {
-                    logger.info("跳过原始类型: {}", className);
+//                    logger.info("跳过原始类型: {}", className);
                     continue;
                 }
 
@@ -340,7 +359,7 @@ public class GithubService {
                     String code = getFileContent(path, gitHubRequestInfo);
                     if (code != null) {
                         params.add(cleanCode(code));
-                        logger.info("找到入参类: {}, 路径: {}", className, path);
+//                        logger.info("找到入参类: {}, 路径: {}", className, path);
                     }
                 } else {
                     logger.info("未找到入参类: {}，可能是跨模块", className);
