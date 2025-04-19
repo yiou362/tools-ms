@@ -1,6 +1,7 @@
 package com.lps.tools.controller;
 
 import com.lps.tools.model.AnalysisResult;
+import com.lps.tools.model.GitHubRequestInfo;
 import com.lps.tools.model.ProjectOverviewResult;
 import com.lps.tools.service.GithubService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -11,6 +12,9 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
 
+/**
+ * @author hhuang26
+ */
 @RestController
 public class GithubInfoController {
 
@@ -35,7 +39,8 @@ public class GithubInfoController {
             @RequestParam String githubApiVersion) {
         HttpHeaders headers = new HttpHeaders();
         try {
-            return githubService.analyzeControllers(owner, repo, branch, headers, token, githubApiVersion);
+
+            return githubService.analyzeControllers(new GitHubRequestInfo(owner, repo, branch, token, githubApiVersion), headers);
         } catch (Exception e) {
             e.printStackTrace();
             return null;
@@ -60,7 +65,7 @@ public class GithubInfoController {
             @RequestParam String githubApiVersion) {
         HttpHeaders headers = new HttpHeaders();
         try {
-            return githubService.analyzeProjectOverview(owner, repo, branch, headers, token, githubApiVersion);
+            return githubService.analyzeProjectOverview(new GitHubRequestInfo(owner, repo, branch, token, githubApiVersion), headers);
         } catch (Exception e) {
             e.printStackTrace();
             return null;

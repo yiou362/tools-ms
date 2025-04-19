@@ -7,11 +7,8 @@ import com.github.javaparser.ast.CompilationUnit;
 import com.github.javaparser.ast.body.MethodDeclaration;
 import com.github.javaparser.ast.body.Parameter;
 import com.github.javaparser.ast.type.Type;
-import com.lps.tools.model.ProjectOverviewResult;
-import com.lps.tools.model.RelevantFiles;
+import com.lps.tools.model.*;
 import com.lps.tools.util.HttpUtil;
-import com.lps.tools.model.AnalysisResult;
-import com.lps.tools.model.GitHubTreeItem;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -40,13 +37,13 @@ public class GithubService {
     private static final Map<String, String> FILE_CACHE = new HashMap<>();
 //    private String lastAnalysisFilePath;
 
-    public List<AnalysisResult> analyzeControllers(String owner, String repo, String branch, HttpHeaders headers, String token, String githubApiVersion) throws IOException, URISyntaxException {
+    public List<AnalysisResult> analyzeControllers(GitHubRequestInfo gitHubRequestInfo, HttpHeaders headers) throws IOException, URISyntaxException {
         try {
             // 获取默认分支的 SHA 值
-            String sha = getDefaultBranchSha(owner, repo, branch, headers);
+            String sha = getDefaultBranchSha(gitHubRequestInfo, headers);
 
             // 获取仓库的树结构
-            List<GitHubTreeItem> tree = getRepoTree(sha, token, owner, repo, githubApiVersion);
+            List<GitHubTreeItem> tree = getRepoTree(gitHubRequestInfo, sha);
 
             // 查找相关文件
             RelevantFiles relevantFiles = findRelevantFiles(tree);
@@ -66,11 +63,11 @@ public class GithubService {
             for (String path : limitedControllerFiles) {
                 try {
                     // 获取文件内容
-                    String content = getFileContent(path, owner, repo, branch, token, githubApiVersion);
+                    String content = getFileContent(path, gitHubRequestInfo);
                     if (content != null) {
                         // 解析控制器内容
-                        AnalysisResult result = parseController(content, relevantFiles, owner, repo, branch, token, githubApiVersion);
-                        results.add(new AnalysisResult(result.getContent(), result.getParams(), result.getReturns()));
+                        AnalysisResult result = parseController(content, relevantFiles, gitHubRequestInfo);
+                        results.add(new AnalysisResult(cleanCode(result.getContent()), result.getParams(), result.getReturns()));
                     }
                 } catch (Exception e) {
                     // 捕获单个文件处理中的异常，避免中断整个流程
@@ -87,13 +84,13 @@ public class GithubService {
     }
 
 
-    public ProjectOverviewResult analyzeProjectOverview(String owner, String repo, String branch, HttpHeaders headers, String token, String githubApiVersion) throws IOException {
+    public ProjectOverviewResult analyzeProjectOverview(GitHubRequestInfo gitHubRequestInfo, HttpHeaders headers) throws IOException {
         try {
             // 获取默认分支的 SHA
-            String sha = getDefaultBranchSha(owner, repo, branch, headers);
+            String sha = getDefaultBranchSha(gitHubRequestInfo, headers);
 
             // 获取仓库树结构
-            List<GitHubTreeItem> tree = getRepoTree(sha, token, owner, repo, githubApiVersion);
+            List<GitHubTreeItem> tree = getRepoTree(gitHubRequestInfo,sha);
 
             // 查找相关文件
             RelevantFiles relevantFiles = findProjectOverviewFiles(tree);
@@ -102,8 +99,8 @@ public class GithubService {
             ProjectOverviewResult results = new ProjectOverviewResult();
 
             // 处理 controllers 和 profiles 文件内容
-            results.setControllers(getFileContents(relevantFiles.getControllers(), owner, repo, branch, token, githubApiVersion));
-            results.setProfiles(getFileContents(relevantFiles.getProfiles(), owner, repo, branch, token, githubApiVersion));
+            results.setControllers(getFileContents(relevantFiles.getControllers(), gitHubRequestInfo));
+            results.setProfiles(getFileContents(relevantFiles.getProfiles(), gitHubRequestInfo));
 
             return results;
         } catch (Exception e) {
@@ -114,15 +111,15 @@ public class GithubService {
     }
 
     // 提取通用方法处理文件内容获取逻辑
-    private List<String> getFileContents(List<String> paths, String owner, String repo, String branch, String token, String githubApiVersion){
+    private List<String> getFileContents(List<String> paths, GitHubRequestInfo gitHubRequestInfo){
         List<String> contents = new ArrayList<>();
         if (paths == null || paths.isEmpty()) {
             return contents; // 如果路径列表为空，直接返回空列表
         }
         for (String path : paths) {
             try {
-                String content = getFileContent(path, owner, repo, branch, token, githubApiVersion);
-                contents.add(content);
+                String content = getFileContent(path, gitHubRequestInfo);
+                contents.add(cleanCode(content));
             } catch (Exception e) {
                 // 单个文件获取失败时记录日志并继续处理其他文件
                 logger.info("Failed to retrieve content for file: {}. Error: {}" , path, e.getMessage());
@@ -137,8 +134,8 @@ public class GithubService {
 //        return lastAnalysisFilePath;
 //    }
 
-    public String getDefaultBranchSha(String owner, String repo, String branch, HttpHeaders headers) throws URISyntaxException {
-        String url = String.format("https://api.github.com/repos/%s/%s/branches/%s", owner, repo, branch);
+    public String getDefaultBranchSha(GitHubRequestInfo gitHubRequestInfo, HttpHeaders headers) throws URISyntaxException {
+        String url = String.format("https://api.github.com/repos/%s/%s/branches/%s", gitHubRequestInfo.getOwner(), gitHubRequestInfo.getRepo(), gitHubRequestInfo.getBranch());
         URI uri = new URI(url);
         RequestEntity<Void> requestEntity = new RequestEntity<>(headers, HttpMethod.GET, uri);
         ResponseEntity<String> response = restTemplate.exchange(requestEntity, String.class);
@@ -155,9 +152,9 @@ public class GithubService {
     }
 
 
-    private List<GitHubTreeItem> getRepoTree(String sha, String token, String owner, String repo, String githubApiVersion) throws IOException {
-        String url = String.format("https://api.github.com/repos/%s/%s/git/trees/%s?recursive=1", owner, repo, sha);
-        JsonNode response = HttpUtil.get(url, token, githubApiVersion);
+    private List<GitHubTreeItem> getRepoTree(GitHubRequestInfo gitHubRequestInfo,String sha) throws IOException {
+        String url = String.format("https://api.github.com/repos/%s/%s/git/trees/%s?recursive=1", gitHubRequestInfo.getOwner(),gitHubRequestInfo.getRepo(), sha);
+        JsonNode response = HttpUtil.get(url, gitHubRequestInfo.getToken(), gitHubRequestInfo.getGithubApiVersion());
         List<GitHubTreeItem> tree = new ArrayList<>();
         for (JsonNode item : response.get("tree")) {
             tree.add(new GitHubTreeItem(
@@ -272,12 +269,12 @@ public class GithubService {
         return result;
     }
 
-    public String getFileContent(String path, String owner, String repo, String branch, String token, String githubApiVersion) throws IOException {
+    public String getFileContent(String path, GitHubRequestInfo gitHubRequestInfo) throws IOException {
         if (FILE_CACHE.containsKey(path)) {
             return FILE_CACHE.get(path);
         }
-        String url = String.format("https://api.github.com/repos/%s/%s/contents/%s?ref=%s", owner, repo, path, branch);
-        JsonNode response = HttpUtil.get(url, token, githubApiVersion);
+        String url = String.format("https://api.github.com/repos/%s/%s/contents/%s?ref=%s", gitHubRequestInfo.getOwner(), gitHubRequestInfo.getRepo(), path, gitHubRequestInfo.getBranch());
+        JsonNode response = HttpUtil.get(url, gitHubRequestInfo.getToken(), gitHubRequestInfo.getGithubApiVersion());
         String content = response.get("content").asText();
         String cleanedContent = content.replaceAll("\\n|\\r", "").trim();
         String decoded;
@@ -291,7 +288,7 @@ public class GithubService {
         return decoded;
     }
 
-    public AnalysisResult parseController(String content, RelevantFiles relevantFiles, String owner, String repo, String branch, String token, String githubApiVersion) {
+    public AnalysisResult parseController(String content, RelevantFiles relevantFiles, GitHubRequestInfo gitHubRequestInfo) {
         try {
             CompilationUnit cu = StaticJavaParser.parse(content);
             Set<String> paramClasses = new HashSet<>();
@@ -340,7 +337,7 @@ public class GithubService {
                 // 查找 dataClasses（精确或模糊匹配）
                 String path = findMatchingClass(className, dataClasses);
                 if (path != null) {
-                    String code = getFileContent(path, owner, repo, branch, token, githubApiVersion);
+                    String code = getFileContent(path, gitHubRequestInfo);
                     if (code != null) {
                         params.add(cleanCode(code));
                         logger.info("找到入参类: {}, 路径: {}", className, path);
@@ -363,7 +360,7 @@ public class GithubService {
                 // 查找 dataClasses
                 String path = findMatchingClass(className, dataClasses);
                 if (path != null) {
-                    String code = getFileContent(path, owner, repo, branch, token, githubApiVersion);
+                    String code = getFileContent(path, gitHubRequestInfo);
                     if (code != null) {
                         returns.add(cleanCode(code));
                         logger.info("找到出参类: {}, 路径: {}", className, path);
