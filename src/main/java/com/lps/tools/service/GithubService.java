@@ -35,7 +35,6 @@ public class GithubService {
             "string", "int", "long", "double", "boolean", "list", "map", "void", "object", "integer"
     );
     private static final Map<String, String> FILE_CACHE = new HashMap<>();
-//    private String lastAnalysisFilePath;
 
     public List<AnalysisResult> analyzeControllers(GitHubRequestInfo gitHubRequestInfo, HttpHeaders headers) throws IOException, URISyntaxException {
         try {
@@ -138,7 +137,9 @@ public class GithubService {
         for (String path : paths) {
             try {
                 String content = getFileContent(path, gitHubRequestInfo);
-                contents.add(new GitHubFileItem(path,cleanCode(content)));
+                // 提取文件名
+                String fileName = extractFileName(path);
+                contents.add(new GitHubFileItem(fileName, cleanCode(content)));
             } catch (Exception e) {
                 // 单个文件获取失败时记录日志并继续处理其他文件
                 logger.info("Failed to retrieve content for file: {}. Error: {}" , path, e.getMessage());
@@ -147,7 +148,17 @@ public class GithubService {
         return contents;
     }
 
-
+    // 辅助方法：从路径中提取文件名
+    private String extractFileName(String path) {
+        if (path == null || path.isEmpty()) {
+            return "";
+        }
+        int lastSlashIndex = path.lastIndexOf('/');
+        if (lastSlashIndex >= 0 && lastSlashIndex + 1 < path.length()) {
+            return path.substring(lastSlashIndex + 1);
+        }
+        return path;
+    }
 
 //    public String getLastAnalysisFilePath() {
 //        return lastAnalysisFilePath;
@@ -248,7 +259,7 @@ public class GithubService {
     private RelevantFiles findProjectOverviewFiles(List<GitHubTreeItem> tree) {
         // 配置文件列表：pom.xml、application.yml、Application.java、logback-spring.xml
         final Set<String> profileFileNames = new HashSet<>(Arrays.asList(
-                "pom.xml", "application", "logback-spring.xml"
+                "pom.xml", "application", "logback-spring.xml", ".md"
         ));
 
         List<String> profiles = new ArrayList<>();
@@ -362,7 +373,7 @@ public class GithubService {
 //                        logger.info("找到入参类: {}, 路径: {}", className, path);
                     }
                 } else {
-                    logger.info("未找到入参类: {}，可能是跨模块", className);
+//                    logger.info("未找到入参类: {}，可能是跨模块", className);
                     skippedClasses.add(className + " (未找到，可能跨模块)");
                 }
             }
@@ -372,7 +383,7 @@ public class GithubService {
             for (String className : returnClasses) {
                 // 跳过原始类型
                 if (isPrimitiveType(className)) {
-                    logger.info("跳过原始类型: {}", className);
+//                    logger.info("跳过原始类型: {}", className);
                     continue;
                 }
 
@@ -382,10 +393,10 @@ public class GithubService {
                     String code = getFileContent(path, gitHubRequestInfo);
                     if (code != null) {
                         returns.add(cleanCode(code));
-                        logger.info("找到出参类: {}, 路径: {}", className, path);
+//                        logger.info("找到出参类: {}, 路径: {}", className, path);
                     }
                 } else {
-                    logger.info("未找到出参类: {}，可能是跨模块", className);
+//                    logger.info("未找到出参类: {}，可能是跨模块", className);
                     skippedClasses.add(className + " (未找到，可能跨模块)");
                 }
             }
@@ -418,7 +429,7 @@ public class GithubService {
         // 模糊匹配
         for (String dataClassName : dataClasses.keySet()) {
             if (dataClassName.toLowerCase().contains(className.toLowerCase())) {
-                logger.info("模糊匹配类: {} -> {}", className, dataClassName);
+//                logger.info("模糊匹配类: {} -> {}", className, dataClassName);
                 return dataClasses.get(dataClassName);
             }
         }
@@ -434,12 +445,27 @@ public class GithubService {
         if (code == null) {
             return "";
         }
-        // 移除换行和制表符
-        String cleaned = code.replaceAll("\\n|\\r|\\t", "");
-        // 压缩多个空格为一个
-        cleaned = cleaned.replaceAll("\\s+", " ");
-        // 移除首尾空格
-        return cleaned.trim();
+        try {
+//            // 合并正则表达式，减少多次调用 replaceAll 的开销
+//            // 1. 移除 package 和 import 语句
+//            // 2. 移除换行符、回车符和制表符，并压缩多余空格
+            String cleaned = code.replaceAll(
+                    "(package\\s+[^;]+;|import\\s+[^;]+;|\\n|\\r|\\t|\\s{2,})", " "
+            );
 
+            // 3. 移除所有注释（单行、多行、文档注释）TODO 可能会误删内容
+//            cleaned = cleaned.replaceAll(
+//                    "(?s)/\\*\\*?.*?\\*/|//.*", " "
+//            );
+
+            // 4. 移除 log.info(XXX);、log.error(XXX); 和 System.out.println(XXX); 语句
+
+            // 移除首尾空格并返回结果
+            return cleaned.trim();
+        } catch (Exception e) {
+            // 捕获异常并记录日志（可根据实际需求调整）
+            logger.error("Error during code cleaning: {}" , e.getMessage());
+            return ""; // 返回空字符串以保证函数的稳定性
+        }
     }
 }

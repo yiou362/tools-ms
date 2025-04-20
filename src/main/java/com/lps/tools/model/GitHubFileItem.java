@@ -9,6 +9,6 @@ import lombok.Data;
 @Data
 @AllArgsConstructor
 public class GitHubFileItem {
-    private String path;
+    private String fileName;
     private String content;
 }
