@@ -31,7 +31,7 @@ public class GithubInfoController {
      * @return
      */
     @GetMapping("/github/analyze-controllers")
-    public List<AnalysisResult> analyzeControllers(
+    public List<String> analyzeControllers(
             @RequestParam String owner,
             @RequestParam String repo,
             @RequestParam String branch,

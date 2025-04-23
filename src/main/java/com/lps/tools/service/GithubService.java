@@ -36,7 +36,7 @@ public class GithubService {
     );
     private static final Map<String, String> FILE_CACHE = new HashMap<>();
 
-    public List<AnalysisResult> analyzeControllers(GitHubRequestInfo gitHubRequestInfo, HttpHeaders headers) throws IOException, URISyntaxException {
+    public List<String> analyzeControllers(GitHubRequestInfo gitHubRequestInfo, HttpHeaders headers) throws IOException, URISyntaxException {
         try {
             // 获取默认分支的 SHA 值
             String sha = getDefaultBranchSha(gitHubRequestInfo, headers);
@@ -54,19 +54,20 @@ public class GithubService {
             }
 
             // 提取前十个元素用于测试（可配置）
-            int maxFilesToProcess = Math.min(10, controllerFiles.size());
-            List<String> limitedControllerFiles = new ArrayList<>(controllerFiles.subList(0, maxFilesToProcess));
+//            int maxFilesToProcess = Math.min(10, controllerFiles.size());
+//            List<String> limitedControllerFiles = new ArrayList<>(controllerFiles.subList(0, maxFilesToProcess));
 
             // 分析每个控制器文件
-            List<AnalysisResult> results = new ArrayList<>();
-            for (String path : limitedControllerFiles) {
+//            List<AnalysisResult> results = new ArrayList<>();
+            List<String> results = new ArrayList<>();
+            for (String path : controllerFiles) {
                 try {
                     // 获取文件内容
                     String content = getFileContent(path, gitHubRequestInfo);
                     if (content != null) {
                         // 解析控制器内容
-                        AnalysisResult result = parseController(content, relevantFiles, gitHubRequestInfo);
-                        results.add(new AnalysisResult(cleanCode(result.getContent()), result.getParams(), result.getReturns()));
+                        String s = parseController(content, relevantFiles, gitHubRequestInfo);
+                        results.add(s);
                     }
                 } catch (Exception e) {
                     // 捕获单个文件处理中的异常，避免中断整个流程
@@ -318,7 +319,7 @@ public class GithubService {
         return decoded;
     }
 
-    public AnalysisResult parseController(String content, RelevantFiles relevantFiles, GitHubRequestInfo gitHubRequestInfo) {
+    public String parseController(String content, RelevantFiles relevantFiles, GitHubRequestInfo gitHubRequestInfo) {
         try {
             CompilationUnit cu = StaticJavaParser.parse(content);
             Set<String> paramClasses = new HashSet<>();
@@ -356,7 +357,8 @@ public class GithubService {
             Map<String, String> dataClasses = relevantFiles.getDataClasses();
 
             // 获取入参源代码
-            List<String> params = new ArrayList<>();
+//            List<String> params = new ArrayList<>();
+            StringBuilder params = new StringBuilder();
             for (String className : paramClasses) {
                 // 跳过原始类型
                 if (isPrimitiveType(className)) {
@@ -369,7 +371,7 @@ public class GithubService {
                 if (path != null) {
                     String code = getFileContent(path, gitHubRequestInfo);
                     if (code != null) {
-                        params.add(cleanCode(code));
+                        params.append(cleanCode(code));
 //                        logger.info("找到入参类: {}, 路径: {}", className, path);
                     }
                 } else {
@@ -379,7 +381,8 @@ public class GithubService {
             }
 
             // 获取出参源代码
-            List<String> returns = new ArrayList<>();
+//            List<String> returns = new ArrayList<>();
+            StringBuilder returns = new StringBuilder();
             for (String className : returnClasses) {
                 // 跳过原始类型
                 if (isPrimitiveType(className)) {
@@ -392,7 +395,7 @@ public class GithubService {
                 if (path != null) {
                     String code = getFileContent(path, gitHubRequestInfo);
                     if (code != null) {
-                        returns.add(cleanCode(code));
+                        returns.append(cleanCode(code));
 //                        logger.info("找到出参类: {}, 路径: {}", className, path);
                     }
                 } else {
@@ -411,12 +414,12 @@ public class GithubService {
 //                    writer.write("\n");
 //                }
 //            }
-
-            return new AnalysisResult(content, params, returns);
+            StringBuilder stringBuilder = new StringBuilder(cleanCode(content)).append(params).append(returns);
+            return stringBuilder.toString();
 
         } catch (Exception e) {
             logger.error("解析错误: {}", e.getMessage());
-            return new AnalysisResult(content, Collections.emptyList(), Collections.emptyList());
+            return "";
         }
     }
 
