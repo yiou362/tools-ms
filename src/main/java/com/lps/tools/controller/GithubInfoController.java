@@ -1,14 +1,13 @@
 package com.lps.tools.controller;
 
-import com.lps.tools.model.AnalysisResult;
 import com.lps.tools.model.GitHubRequestInfo;
 import com.lps.tools.model.ProjectOverviewResult;
 import com.lps.tools.service.GithubService;
+import com.lps.tools.service.MarkdownFixerService;
+import com.lps.tools.model.ApiDocumentation;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
@@ -16,10 +15,14 @@ import java.util.List;
  * @author hhuang26
  */
 @RestController
+@RequestMapping("/github")
 public class GithubInfoController {
 
     @Autowired
     private GithubService githubService;
+
+    @Autowired
+    private MarkdownFixerService markdownFixerService;
 
     /**
      * 获取API文档相关代码（controller、entity）
@@ -30,7 +33,7 @@ public class GithubInfoController {
      * @param githubApiVersion
      * @return
      */
-    @GetMapping("/github/analyze-controllers")
+    @GetMapping("/analyze-controllers")
     public List<String> analyzeControllers(
             @RequestParam String owner,
             @RequestParam String repo,
@@ -56,7 +59,7 @@ public class GithubInfoController {
      * @param githubApiVersion
      * @return
      */
-    @GetMapping("/github/project-overview")
+    @GetMapping("/project-overview")
     public ProjectOverviewResult projectOverview(
             @RequestParam String owner,
             @RequestParam String repo,
@@ -70,5 +73,11 @@ public class GithubInfoController {
             e.printStackTrace();
             return null;
         }
+    }
+
+    @PostMapping("/fix-markdown")
+    public String fixMarkdown(@RequestBody String[] output) throws Exception {
+        // 调用 MarkdownFixer 处理入参，将处理后的结果转换为字符串并返回
+        return markdownFixerService.subMdToStr(output);
     }
 }
