@@ -2,9 +2,9 @@ package com.lps.tools.controller;
 
 import com.lps.tools.model.GitHubRequestInfo;
 import com.lps.tools.model.ProjectOverviewResult;
+import com.lps.tools.model.ApiMdRequest;
 import com.lps.tools.service.GithubService;
 import com.lps.tools.service.MarkdownFixerService;
-import com.lps.tools.model.ApiDocumentation;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
 import org.springframework.web.bind.annotation.*;
@@ -76,8 +76,8 @@ public class GithubInfoController {
     }
 
     @PostMapping("/fix-markdown")
-    public String fixMarkdown(@RequestBody String[] output) throws Exception {
+    public String fixMarkdown(@RequestBody ApiMdRequest request) throws Exception {
         // 调用 MarkdownFixer 处理入参，将处理后的结果转换为字符串并返回
-        return markdownFixerService.subMdToStr(output);
+        return markdownFixerService.subMdToStr(request.getOutput());
     }
 }

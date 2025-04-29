@@ -5,11 +5,11 @@ import lombok.Data;
 
 /**
  * @author hhuang26
+ * @description 存放每一个LLM生成的接口信息
  */
 @Data
 @AllArgsConstructor
-public// 自定义类表示 API 文档对象
-class ApiDocumentation {
+public class ApiDocumentation {
     private String apiInfo;
     private String cat;
 
@@ -17,7 +17,7 @@ class ApiDocumentation {
     @Override
     public String toString() {
         return "ApiDocumentation{\n" +
-               "api_md='" + apiInfo + "',\n" +
-               "line='" + cat + "'\n}";
+               "apiInfo='" + apiInfo + "',\n" +
+               "cat='" + cat + "'\n}";
     }
 }
